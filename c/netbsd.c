@@ -64,6 +64,72 @@ unsigned long get_cpu_speed(void) {
 #endif
 }
 
+
+Logger::~Logger(){
+	if(mutex){
+		pthread_mutex_destroy(mutex);
+		free(mutex);
+	}
+	this->close();
+}
+
+void Logger::threadsafe(){
+	if(mutex){
+		pthread_mutex_destroy(mutex);
+		free(mutex);
+		mutex = NULL;
+	}
+	mutex = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t));
+	pthread_mutex_init(mutex, NULL);
+}
+
+int Logger::open(FILE *fp, int level, bool is_threadsafe){
+	this->fp = fp;
+	this->level_ = level;
+	if(is_threadsafe){
+		this->threadsafe();
+	}
+	return 0;
+}
+
+int Logger::open(const char *filename, int level, bool is_threadsafe, uint64_t rotate_size){
+	if(strlen(filename) > PATH_MAX - 20){
+		fprintf(stderr, "log filename too long!");
+		return -1;
+	}
+	strcpy(this->filename, filename);
+
+	FILE *fp;
+	if(strcmp(filename, "stdout") == 0){
+		fp = stdout;
+	}else if(strcmp(filename, "stderr") == 0){
+		fp = stderr;
+	}else{
+		fp = fopen(filename, "a");
+		if(fp == NULL){
+			return -1;
+		}
+
+		struct stat st;
+		int ret = fstat(fileno(fp), &st);
+		if(ret == -1){
+			fprintf(stderr, "fstat log file %s error!", filename);
+			return -1;
+		}else{
+			this->rotate_size = rotate_size;
+			stats.w_curr = st.st_size;
+		}
+	}
+	return this->open(fp, level, is_threadsafe);
+}
+
+void Logger::close(){
+	if(fp != stdin && fp != stdout){
+		fclose(fp);
+	}
+}
+
+
 unsigned long get_proc_total(void) {
 	char errbuf[_POSIX2_LINE_MAX];
         int count;
